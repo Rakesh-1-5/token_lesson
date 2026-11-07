@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokens: how AI reads your text</title>
+<style>
+  :root {
+    --bg: #f3f6fb;
+    --ink: #14213d;
+    --muted: #5b6784;
+    --card: #ffffff;
+    --line: #d5dcea;
+    --accent: #2f5bea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 8px 0 8px; }
+  h2 { font-size: 1.3rem; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); font-size: 1.05rem; }
+  section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 110px;
+    font: 1rem/1.5 system-ui, sans-serif;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    resize: vertical;
+    color: var(--ink);
+  }
+  textarea:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  button {
+    font: 0.9rem system-ui, sans-serif;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  #output {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 6px;
+    background: #f8faff;
+    border: 1px dashed var(--line);
+    min-height: 56px;
+    font: 1.05rem/2.2 ui-monospace, Menlo, Consolas, monospace;
+    word-break: break-word;
+  }
+  .tok { padding: 3px 1px; border-radius: 3px; white-space: pre-wrap; }
+  .c0 { background: #cfe0ff; }
+  .c1 { background: #ffd9c7; }
+  .c2 { background: #d3f0d9; }
+  .c3 { background: #f6e2a8; }
+  .c4 { background: #e6d4f5; }
+  .stats { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  .stat { flex: 1 1 140px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-family: system-ui, sans-serif; }
+  .stat b { display: block; font-size: 1.6rem; color: var(--accent); }
+  .stat span { font-size: 0.85rem; color: var(--muted); }
+  .note { font: 0.85rem/1.5 system-ui, sans-serif; color: var(--muted); margin-top: 14px; }
+  a { color: var(--accent); }
+
+  /* Context window section */
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font: 0.95rem system-ui, sans-serif; margin: 12px 0; }
+  input[type=range] { flex: 1 1 200px; accent-color: var(--accent); }
+  .bar { height: 22px; background: #e8edf7; border-radius: 11px; overflow: hidden; border: 1px solid var(--line); }
+  #fill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+  #fill.full { background: #d9480f; }
+  #usage { font: 0.9rem system-ui, sans-serif; color: var(--muted); margin: 6px 0 12px; }
+  #chat { display: flex; flex-direction: column; gap: 8px; }
+  .msg { border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 6px; padding: 8px 12px; font: 0.95rem system-ui, sans-serif; background: #fff; }
+  .msg.ai { border-left-color: #2b9348; }
+  .msg small { color: var(--muted); display: block; }
+  .msg.out { opacity: 0.45; border-style: dashed; border-left-color: #9aa5bd; }
+  .msg.out .txt { text-decoration: line-through; }
+  #verdict { font: 0.95rem system-ui, sans-serif; margin-top: 14px; padding: 10px 12px; border-radius: 6px; background: #eaf6ee; }
+  #verdict.warn { background: #fdeee6; }
+  .add { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  /* Lesson plan */
+  .tablewrap { overflow-x: auto; }
+  table.plan { border-collapse: collapse; width: 100%; font: 0.92rem system-ui, sans-serif; margin-top: 8px; }
+  table.plan th, table.plan td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.plan th { color: var(--muted); font-weight: 600; }
+  details { margin-top: 12px; font: 0.95rem/1.6 system-ui, sans-serif; }
+  summary { cursor: pointer; font-weight: 600; }
+  summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  details ul { padding-left: 20px; margin: 8px 0 0; }
+  /* Challenge, real-world, quiz */
+  .opt { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; margin-top: 8px; font: 0.95rem system-ui, sans-serif; cursor: pointer; background: #fff; }
+  .opt input { margin-top: 4px; accent-color: var(--accent); }
+  .opt small { color: var(--muted); display: block; }
+  .opt.picked { border-color: var(--accent); background: #f0f5ff; }
+  #chResult, #quizScore { font: 0.95rem system-ui, sans-serif; margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: #eef1f8; }
+  #chResult.ok { background: #eaf6ee; }
+  #chResult.bad { background: #fdeee6; }
+  ul.apply { font: 0.95rem/1.6 system-ui, sans-serif; padding-left: 20px; margin: 8px 0 0; }
+  ul.apply li { margin-bottom: 6px; }
+  .q { margin-top: 18px; }
+  .q p { font-weight: 600; font-family: system-ui, sans-serif; margin-bottom: 6px; }
+  .q button { display: block; width: 100%; text-align: left; margin-top: 6px; }
+  .q button.right { background: #eaf6ee; border-color: #2b9348; }
+  .q button.wrong { background: #fdeee6; border-color: #d9480f; }
+  .why { font: 0.9rem/1.5 system-ui, sans-serif; color: var(--muted); margin-top: 6px; }
+  .add input[type=text] { flex: 1 1 220px; font: 1rem system-ui, sans-serif; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tokens: how AI reads your text</h1>
+  <p class="lead">AI models don't read letters or whole words. They read small pieces called tokens. Type below and watch your text get cut up.</p>
+
+  <section>
+    <h2>Lesson plan (45 minutes)</h2>
+    <p>Have you ever told a chatbot something, then watched it forget a few messages later? By the end of this lesson you will know why, and how to fix it.</p>
+    <p><b>You will be able to:</b></p>
+    <ul class="apply">
+      <li>Explain what a token is and why text is split into tokens.</li>
+      <li>Explain what a context window is and what happens when it fills up.</li>
+      <li>Choose a way to keep important information inside a token budget.</li>
+    </ul>
+    <div class="tablewrap">
+      <table class="plan">
+        <tr><th>Time</th><th>Section</th><th>What to do</th></tr>
+        <tr><td>3 min</td><td>Hook</td><td>Read the question above and share a time a chatbot "forgot" something.</td></tr>
+        <tr><td>10 min</td><td>Token splitter</td><td>Try all four example buttons, then type your own sentences. Compare with the real tokenizer.</td></tr>
+        <tr><td>10 min</td><td>Context window</td><td>Fill the window with sample replies, then move the slider.</td></tr>
+        <tr><td>10 min</td><td>Challenge</td><td>Save the support chat within the budget.</td></tr>
+        <tr><td>5 min</td><td>Building real apps</td><td>Read the five tips and pick the one you would use first.</td></tr>
+        <tr><td>7 min</td><td>Knowledge check</td><td>Answer the 5 questions and read each explanation.</td></tr>
+      </table>
+    </div>
+    <details>
+      <summary>Self-learner tips</summary>
+      <ul>
+        <li>Work top to bottom and use the times above as a guide.</li>
+        <li>Before pressing Check in the challenge, predict whether your choice will pass.</li>
+        <li>If you score under 5 on the quiz, refresh and retry after re-reading the section.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Instructor notes</summary>
+      <ul>
+        <li>Project the page and ask learners to predict the token count before showing it.</li>
+        <li>In the context window section, ask: "Which message will drop out next?" before clicking.</li>
+        <li>Run the challenge in pairs, then compare answers. There is more than one winning set, so discuss why.</li>
+        <li>Stress that the splitter is a simplified demo, and show the real tokenizer to compare.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section>
+    <h2>Try it: split your text into tokens</h2>
+    <textarea id="input" aria-label="Text to split into tokens">Tokenization is unbelievably useful!</textarea>
+    <div class="examples">
+      <button data-text="Hello world">Short sentence</button>
+      <button data-text="Internationalization and counterintuitive pseudoscience">Long words</button>
+      <button data-text="2026-11-07 costs $1,234.56">Numbers and symbols</button>
+      <button data-text="नमस्ते दुनिया">Hindi</button>
+    </div>
+    <div id="output" aria-live="polite"></div>
+    <div class="stats">
+      <div class="stat"><b id="tokCount">0</b><span>tokens</span></div>
+      <div class="stat"><b id="charCount">0</b><span>characters</span></div>
+      <div class="stat"><b id="ratio">0</b><span>characters per token</span></div>
+    </div>
+    <p class="note">This is a simplified splitter built to show the idea. Real models use a learned method (such as byte-pair encoding), so exact splits and counts differ. Compare with a real one at <a href="https://platform.openai.com/tokenizer" target="_blank" rel="noopener">platform.openai.com/tokenizer</a>. Colored pieces include the space before a word, as real tokenizers do.</p>
+  </section>
+
+  <section>
+    <h2>Context window: the model's limited desk</h2>
+    <p>A model can only look at a limited number of tokens at once. This limit is the context window. Everything it needs (your messages, its replies, instructions) must fit inside. Chat apps send the latest messages that fit and leave the oldest ones out, so the model never sees them.</p>
+    <div class="row">
+      <label for="limit">Window size:</label>
+      <input type="range" id="limit" min="30" max="150" value="60">
+      <b id="limitVal">60</b> tokens
+    </div>
+    <div class="bar"><div id="fill"></div></div>
+    <div id="usage"></div>
+    <div id="chat"></div>
+    <div id="verdict" aria-live="polite"></div>
+    <div class="add">
+      <input type="text" id="newMsg" placeholder="Type a message to add to the chat" aria-label="New message">
+      <button id="addBtn">Add message</button>
+      <button id="sampleBtn">Add sample reply</button>
+      <button id="resetBtn">Reset chat</button>
+    </div>
+    <p class="note">Each message also costs 4 extra tokens for its role label (You or AI), as chat formats add a little overhead. Token counts here use the simplified splitter above.</p>
+  </section>
+
+  <section>
+    <h2>Challenge: save the support chat</h2>
+    <p>A customer support bot has a window of <b id="chBudget">60</b> tokens. Choose which messages to send to the model. Your goal: stay within the budget, and keep both the <b>order number</b> and the <b>refund request</b>, or the bot can't help.</p>
+    <div id="chOptions"></div>
+    <div class="bar" style="margin-top:14px"><div id="chFill"></div></div>
+    <div id="chUsage" class="note"></div>
+    <button id="chCheck" style="margin-top:8px">Check my answer</button>
+    <div id="chResult" aria-live="polite">Pick your messages, then press Check.</div>
+    <p class="note">Tip: the last option is a summary of the whole chat. Compare its cost with the messages it replaces.</p>
+  </section>
+
+  <section>
+    <h2>Using this when you build an AI app</h2>
+    <ul class="apply">
+      <li><b>Count before you send.</b> Use the model provider's tokenizer (for example, the tiktoken library for OpenAI models) to measure your prompt first.</li>
+      <li><b>Leave room for the answer.</b> The window covers your input and the model's output together, so never fill it completely with input.</li>
+      <li><b>Trim or summarize old messages.</b> Keep the newest turns word for word, and replace older ones with a short summary that keeps key facts like names and order numbers.</li>
+      <li><b>Keep instructions short.</b> The system prompt is sent every time, so every extra word is paid for on every request.</li>
+      <li><b>Watch cost and speed.</b> Providers bill per token, and more tokens usually means a slower reply.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Knowledge check</h2>
+    <div id="quiz"></div>
+    <div id="quizScore">Answer all 5 questions to see your score.</div>
+  </section>
+</main>
+
+<script>
+  // Step 1: grab the page elements we need to read from and write to.
+  const input = document.getElementById("input");
+  const output = document.getElementById("output");
+  const tokCount = document.getElementById("tokCount");
+  const charCount = document.getElementById("charCount");
+  const ratio = document.getElementById("ratio");
+
+  // Step 2: cut text into pieces.
+  // The pattern finds: a word (with its leading space), 1-3 digits, a single symbol, or spaces.
+  function tokenize(text) {
+    const pieces = text.match(/\s?[A-Za-z]+|\s?\d{1,3}|\s?[^\sA-Za-z\d]|\s+/g) || [];
+    const tokens = [];
+    for (const piece of pieces) {
+      // Step 3: long words get split into smaller chunks, like real subword tokens.
+      const hasSpace = /^\s/.test(piece);
+      const word = piece.trim();
+      if (/^[A-Za-z]+$/.test(word) && word.length > 6) {
+        for (let i = 0; i < word.length; i += 5) {
+          const chunk = word.slice(i, i + 5);
+          tokens.push(i === 0 && hasSpace ? " " + chunk : chunk);
+        }
+      } else {
+        tokens.push(piece);
+      }
+    }
+    return tokens;
+  }
+
+  // Step 4: show the tokens as colored chips and update the numbers.
+  function render() {
+    const text = input.value;
+    const tokens = tokenize(text);
+    output.innerHTML = "";
+    tokens.forEach((t, i) => {
+      const span = document.createElement("span");
+      span.className = "tok c" + (i % 5);
+      span.textContent = t;
+      output.appendChild(span);
+    });
+    tokCount.textContent = tokens.length;
+    charCount.textContent = text.length;
+    ratio.textContent = tokens.length ? (text.length / tokens.length).toFixed(1) : "0";
+  }
+
+  // Step 5: re-run whenever the learner types or clicks an example.
+  input.addEventListener("input", render);
+  document.querySelectorAll(".examples button").forEach(btn => {
+    btn.addEventListener("click", () => { input.value = btn.dataset.text; render(); });
+  });
+  render();
+
+  // ===== Piece 2: context window =====
+  const ROLE_COST = 4; // extra tokens per message for the role label
+  const limitEl = document.getElementById("limit");
+  const limitVal = document.getElementById("limitVal");
+  const fill = document.getElementById("fill");
+  const usage = document.getElementById("usage");
+  const chat = document.getElementById("chat");
+  const verdict = document.getElementById("verdict");
+  const newMsg = document.getElementById("newMsg");
+
+  // The chat history. The first message holds a fact the AI must remember.
+  const startChat = () => [
+    { role: "You", text: "My name is Asha and I love cricket." },
+    { role: "AI", text: "Nice to meet you, Asha! What would you like to talk about?" }
+  ];
+  let messages = startChat();
+
+  const samples = [
+    { role: "You", text: "How many formats of cricket are there?" },
+    { role: "AI", text: "There are three main ones: Test matches, One Day Internationals, and T20." },
+    { role: "You", text: "Which format is the shortest to watch?" },
+    { role: "AI", text: "T20 is the shortest. A match lasts about three hours." }
+  ];
+  let sampleIndex = 0;
+
+  function cost(m) { return tokenize(m.text).length + ROLE_COST; }
+
+  function renderChat() {
+    const limit = Number(limitEl.value);
+    limitVal.textContent = limit;
+
+    // Walk from the NEWEST message backwards, keeping what fits.
+    let used = 0;
+    const visible = new Array(messages.length).fill(false);
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const c = cost(messages[i]);
+      if (used + c <= limit) { used += c; visible[i] = true; }
+      else break; // once one message does not fit, all older ones are out too
+    }
+
+    chat.innerHTML = "";
+    messages.forEach((m, i) => {
+      const div = document.createElement("div");
+      div.className = "msg" + (m.role === "AI" ? " ai" : "") + (visible[i] ? "" : " out");
+      const label = document.createElement("small");
+      label.textContent = m.role + " · " + cost(m) + " tokens" + (visible[i] ? "" : " · outside the window");
+      const txt = document.createElement("span");
+      txt.className = "txt";
+      txt.textContent = m.text;
+      div.append(label, txt);
+      chat.appendChild(div);
+    });
+
+    fill.style.width = Math.min(100, (used / limit) * 100) + "%";
+    fill.className = used / limit > 0.9 ? "full" : "";
+    usage.textContent = used + " of " + limit + " tokens used";
+
+    if (!visible[0]) {
+      verdict.className = "warn";
+      verdict.textContent = "The model can no longer see message 1. If you now ask \"What is my name?\", it cannot answer, because that fact was never sent to it.";
+    } else {
+      verdict.className = "";
+      verdict.textContent = "Everything fits. The model can still use the first message (your name).";
+    }
+  }
+
+  function addMessage(role, text) {
+    if (!text.trim()) return;
+    messages.push({ role, text: text.trim() });
+    renderChat();
+  }
+
+  document.getElementById("addBtn").addEventListener("click", () => {
+    addMessage("You", newMsg.value);
+    newMsg.value = "";
+  });
+  newMsg.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("addBtn").click(); });
+  document.getElementById("sampleBtn").addEventListener("click", () => {
+    const s = samples[sampleIndex % samples.length];
+    addMessage(s.role, s.text);
+    sampleIndex++;
+  });
+  document.getElementById("resetBtn").addEventListener("click", () => { messages = startChat(); sampleIndex = 0; renderChat(); });
+  limitEl.addEventListener("input", renderChat);
+  renderChat();
+
+  // ===== Piece 3a: challenge =====
+  const BUDGET = 60;
+  const options = [
+    { role: "You", text: "Hi, I'm Ravi. My order #4821 hasn't arrived.", key: "order" },
+    { role: "AI", text: "Sorry to hear that, Ravi! Let me check the order for you." },
+    { role: "You", text: "It was supposed to arrive last Monday. I paid extra for fast delivery." },
+    { role: "AI", text: "I see it was delayed at the courier hub. I apologize for the trouble." },
+    { role: "You", text: "Thanks. By the way, what are your store hours?" },
+    { role: "AI", text: "We are open from 9 am to 6 pm every day." },
+    { role: "You", text: "Okay. Please give me a refund for the delivery fee.", key: "refund" },
+    { role: "Summary", text: "Ravi, order #4821, late delivery, wants a refund of the delivery fee.", key: "both" }
+  ];
+  const chOptions = document.getElementById("chOptions");
+  const chFill = document.getElementById("chFill");
+  const chUsage = document.getElementById("chUsage");
+  const chResult = document.getElementById("chResult");
+  document.getElementById("chBudget").textContent = BUDGET;
+
+  options.forEach((m, i) => {
+    const label = document.createElement("label");
+    label.className = "opt";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.dataset.i = i;
+    const body = document.createElement("span");
+    const info = document.createElement("small");
+    info.textContent = m.role + " · " + cost(m) + " tokens";
+    const txt = document.createElement("span");
+    txt.textContent = m.text;
+    body.append(info, txt);
+    label.append(box, body);
+    chOptions.appendChild(label);
+  });
+
+  function chosen() {
+    return [...chOptions.querySelectorAll("input:checked")].map(b => options[Number(b.dataset.i)]);
+  }
+  function updateChallenge() {
+    const picks = chosen();
+    const total = picks.reduce((sum, m) => sum + cost(m), 0);
+    chOptions.querySelectorAll(".opt").forEach(l => l.classList.toggle("picked", l.querySelector("input").checked));
+    chFill.style.width = Math.min(100, (total / BUDGET) * 100) + "%";
+    chFill.className = total > BUDGET ? "full" : "";
+    chUsage.textContent = total + " of " + BUDGET + " tokens used";
+  }
+  chOptions.addEventListener("change", updateChallenge);
+  updateChallenge();
+
+  document.getElementById("chCheck").addEventListener("click", () => {
+    const picks = chosen();
+    const total = picks.reduce((sum, m) => sum + cost(m), 0);
+    const keys = picks.map(m => m.key);
+    const hasOrder = keys.includes("order") || keys.includes("both");
+    const hasRefund = keys.includes("refund") || keys.includes("both");
+    const problems = [];
+    if (total > BUDGET) problems.push("You are " + (total - BUDGET) + " tokens over the budget. Drop messages that don't matter.");
+    if (!hasOrder) problems.push("The order number is missing, so the bot can't find the order.");
+    if (!hasRefund) problems.push("The refund request is missing, so the bot doesn't know what you want.");
+    if (problems.length === 0) {
+      chResult.className = "ok";
+      chResult.textContent = "Well done! You used " + total + " of " + BUDGET + " tokens and kept the key facts. This is exactly what real apps do when they trim or summarize history.";
+    } else {
+      chResult.className = "bad";
+      chResult.textContent = problems.join(" ");
+    }
+  });
+
+  // ===== Piece 3b: quiz =====
+  const questions = [
+    {
+      q: "What is a token?",
+      a: ["Always one whole word", "A small piece of text, such as a word, part of a word, or a symbol", "A password for an AI tool", "Always one letter"],
+      right: 1,
+      why: "Tokens are pieces of text. Common words are often one token, while long or rare words are split into several."
+    },
+    {
+      q: "What does the context window limit?",
+      a: ["How many users can chat at once", "How many tokens the model can handle in one request, input and output together", "How long the model has been trained", "How many languages it knows"],
+      right: 1,
+      why: "The window holds your prompt and the model's reply together, so you need to leave room for the answer."
+    },
+    {
+      q: "A chat gets longer than the window. What usually happens to the oldest messages?",
+      a: ["The model secretly remembers them", "The app leaves them out, so the model never sees them", "They are turned into images", "Nothing, the window grows"],
+      right: 1,
+      why: "The model only knows what is sent in the request. If old messages are left out, those facts are gone for that request."
+    },
+    {
+      q: "Which approach saves tokens while keeping key facts like a name or order number?",
+      a: ["Delete every message", "Summarize older messages and keep the newest ones in full", "Make every message longer", "Repeat the system prompt twice"],
+      right: 1,
+      why: "A short summary keeps what matters at a fraction of the cost, as you saw in the challenge."
+    },
+    {
+      q: "Why should an app builder care about token counts?",
+      a: ["Tokens affect cost, speed, and whether the request fits at all", "Tokens only matter for images", "They decide the model's personality", "They don't matter in real apps"],
+      right: 0,
+      why: "Providers charge per token, more tokens are slower, and going over the window limit can cause errors or lost context."
+    }
+  ];
+  const quiz = document.getElementById("quiz");
+  const quizScore = document.getElementById("quizScore");
+  let answered = 0, correct = 0;
+
+  questions.forEach((item, qi) => {
+    const wrap = document.createElement("div");
+    wrap.className = "q";
+    const p = document.createElement("p");
+    p.textContent = (qi + 1) + ". " + item.q;
+    wrap.appendChild(p);
+    const buttons = [];
+    const why = document.createElement("div");
+    why.className = "why";
+    item.a.forEach((text, ai) => {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.addEventListener("click", () => {
+        buttons.forEach(x => x.disabled = true);
+        answered++;
+        if (ai === item.right) { b.classList.add("right"); correct++; }
+        else { b.classList.add("wrong"); buttons[item.right].classList.add("right"); }
+        why.textContent = item.why;
+        if (answered === questions.length) {
+          quizScore.textContent = "You scored " + correct + " out of " + questions.length + ". " + (correct === questions.length ? "Perfect!" : "Re-read the sections above and try again by refreshing the page.");
+        }
+      });
+      buttons.push(b);
+      wrap.appendChild(b);
+    });
+    wrap.appendChild(why);
+    quiz.appendChild(wrap);
+  });
+</script>
+</body>
+</html>
