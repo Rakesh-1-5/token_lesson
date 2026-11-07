@@ -2,7 +2,7 @@
 
 An interactive web lesson that teaches **Tokenization and Context Window Management**. It was made for the Instructional Designer Intern (AI Courses) task.
 
-**Live version:** https://YOUR-USERNAME.github.io/token-lesson/
+**Live version:** https://RAKESH_VALLEPU.github.io/token-lesson/
 
 ## How to open it
 
